@@ -1,0 +1,108 @@
+<!doctype html>
+<meta name="timeout" content="long">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/utils.js"></script>
+<script src="/common/dispatcher/dispatcher.js"></script>
+<script src="resources/helper.sub.js"></script>
+<script src="/service-workers/service-worker/resources/test-helpers.sub.js"></script>
+<script>
+
+promise_test(async t => {
+  const pageA = new RemoteContext(token());
+  const pageB = new RemoteContext(token());
+
+  const urlA = location.origin + executorPath + pageA.context_id +
+               '&events=pagehide,pageshow,load';
+  const urlB = originCrossSite + executorPath + pageB.context_id;
+
+  window.open(urlA, '_blank', 'noopener');
+
+  // Set `oncontrollerchange` on `pageA`.
+  await pageA.execute_script(waitForPageShow);
+  await pageA.execute_script(
+    () => {
+      navigator.serviceWorker.oncontrollerchange =
+          () => recordEvent('controllerchange');
+    });
+
+  // Register a service worker after `pageA` is loaded to make `pageA`
+  // uncontrolled at this time.
+  const workerUrl =
+      'resources/service-worker.js?pipe=header(Service-Worker-Allowed,../)';
+  const registration =
+      await service_worker_unregister_and_register(t, workerUrl, './');
+  t.add_cleanup(_ => registration.unregister());
+  await wait_for_state(t, registration.installing, 'activated');
+
+  // Navigate to `urlB`.
+  await pageA.execute_script(
+    (url) => {
+      prepareNavigation(() => { location.href = url; });
+    },
+    [urlB]);
+  await pageB.execute_script(waitForPageShow);
+
+  // Call Clients.claim() on the service worker when `pageA` is in BFCache.
+  const controllerChanged = new Promise(
+      resolve => navigator.serviceWorker.oncontrollerchange = resolve);
+  await claim(t, registration.active);
+  await controllerChanged;
+
+  const clients1 = await (await fetch('/get-clients-matchall')).json();
+
+  // Back navigate and check whether the page is restored from BFCache.
+  await pageB.execute_script(
+    () => {
+      prepareNavigation(() => { history.back(); });
+    }
+  );
+  await pageA.execute_script(waitForPageShow);
+  await assert_bfcached(pageA);
+
+  // `pageA` doesn't appear in matchAll() called when the page was in BFCache.
+  assert_true(clients1.indexOf(urlA) < 0,
+              '1: matchAll() before back navigation');
+
+  // After back navigation, `pageA` appears in matchAll(), but not controlled.
+  const clients2 = await (await fetch('/get-clients-matchall')).json();
+  const controlled2 = await pageA.execute_script(
+    () => fetch('/is-controlled?claim-2').then(r => r.text()));
+  assert_true(clients2.indexOf(urlA) >= 0,
+    '2: matchAll() just after back navigation');
+  assert_not_equals(controlled2, 'controlled',
+    '2: pageA should not be controlled just after back navigation');
+  assert_array_equals(
+    await pageA.execute_script(() => getRecordedEvents()),
+    [
+      'window.load',
+      'window.pageshow',
+      'window.pagehide.persisted',
+      'window.pageshow.persisted',
+    ],
+    '2: controllerchange should not be fired just after back navigation');
+
+  // Call clients.claim() again when `pageA` is not in BFCache.
+  await claim(t, registration.active);
+
+  // After claim(), `pageA` is controlled.
+  const clients3 = await (await fetch('/get-clients-matchall')).json();
+  const controlled3 = await pageA.execute_script(
+      () => fetch('/is-controlled?claim-3').then(r => r.text()));
+  assert_true(clients3.indexOf(urlA) >= 0,
+    '3: matchAll() after back navigation and claim()');
+  assert_equals(controlled3, 'controlled',
+    '3: pageA should be controlled after back navigation and claim()');
+  assert_array_equals(
+    await pageA.execute_script(() => getRecordedEvents()),
+    [
+      'window.load',
+      'window.pageshow',
+      'window.pagehide.persisted',
+      'window.pageshow.persisted',
+      'controllerchange',
+    ],
+    '3: controllerchange should be fired');
+
+}, 'Serviceworker Clients.claim()');
+</script>
