@@ -1,0 +1,72 @@
+<!DOCTYPE HTML>
+<meta name="timeout" content="long">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/utils.js"></script>
+<script src="/common/dispatcher/dispatcher.js"></script>
+<script src="resources/helper.sub.js"></script>
+<script>
+// `pushState()` should work in the same way regardless of whether the page is
+// restored from BFCache or not.
+for (const shouldBeBFCached of [true, false]) {
+  promise_test(async t => {
+    const pageA = new RemoteContext(token());
+    const pageB = new RemoteContext(token());
+
+    let urlA = location.origin + executorPath + pageA.context_id;
+    if (!shouldBeBFCached) {
+      // Try to disable BFCache.
+      urlA += '&pipe=header(Cache-Control,no-store)';
+    }
+    const urlPushState = urlA + '&pushState=yes';
+    const urlB = originCrossSite + executorPath + pageB.context_id;
+
+    window.open(urlA, '_blank', 'noopener');
+
+    // `pushState(..., urlPushState)` on `urlA`.
+    await pageA.execute_script(waitForPageShow);
+    await pageA.execute_script(
+      (url) => history.pushState('blue', '', url),
+      [urlPushState]);
+
+    // Navigate to `urlB`.
+    await pageA.execute_script(
+      (url) => prepareNavigation(() => {
+        location.href = url;
+      }),
+      [urlB]);
+
+    // Back navigate and check whether the page is restored from BFCache.
+    await pageB.execute_script(waitForPageShow);
+    await pageB.execute_script(
+      () => {
+        prepareNavigation(() => { history.back(); });
+      }
+    );
+    if (shouldBeBFCached) {
+      await assert_bfcached(pageA);
+    } else {
+      await assert_not_bfcached(pageA);
+    }
+
+    // `location` etc. should point to what are `pushState()`d.
+    assert_equals(await pageA.execute_script(() => location.href),
+                  urlPushState, 'url 1');
+    assert_equals(await pageA.execute_script(() => history.state),
+                  'blue', 'history.state 1');
+
+    // `history.back()` and then wait for `onpopstate`.
+    await pageA.execute_script(() => new Promise(resolve => {
+      window.onpopstate = () => resolve();
+      history.back();
+    }));
+
+    // `location` etc. should point to the original URL before `pushState()`.
+    assert_equals(await pageA.execute_script(() => location.href),
+                  urlA, 'url 2');
+    assert_equals(await pageA.execute_script(() => history.state),
+                  null, 'history.state 2');
+  }, 'back navigation to pushState()d page (' +
+     (shouldBeBFCached ? '' : 'not ') + 'in BFCache)');
+}
+</script>
