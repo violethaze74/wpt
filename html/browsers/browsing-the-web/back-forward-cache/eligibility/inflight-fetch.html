@@ -1,0 +1,119 @@
+<!doctype html>
+<meta name="timeout" content="long">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/utils.js"></script>
+<script src="/common/dispatcher/dispatcher.js"></script>
+<script src="../resources/helper.sub.js"></script>
+<script>
+// Check whether the page is BFCached when there are in-flight network requests
+// at the time of navigation.
+
+// Delay after fetch start:
+// - 0.0 seconds: before BFCache
+// - 2.0 seconds: when in BFCache
+// - 3.5 seconds: after restored from BFCache
+function runTest(urlToFetch, hasCSP, shouldSucceed, description) {
+  promise_test(async t => {
+    const pageA = new RemoteContext(token());
+    const pageB = new RemoteContext(token());
+
+    let urlA = location.origin + executorPath + pageA.context_id;
+    if (hasCSP) {
+      urlA += "&pipe=header(Content-Security-Policy,connect-src 'self')";
+    }
+    const urlB = originCrossSite + executorPath + pageB.context_id;
+
+    window.open(urlA, '_blank', 'noopener');
+
+    // Initiate a `fetch()`.
+    await pageA.execute_script(waitForPageShow);
+    await pageA.execute_script(
+      (urlToFetch) => {
+        window.fetchPromise = fetch(urlToFetch);
+      }, [urlToFetch]);
+
+    // Wait for 0.5 seconds to receive response headers before BFCache, if any.
+    await new Promise(resolve => t.step_timeout(resolve, 500));
+
+    // Navigate to `urlB`.
+    await pageA.execute_script(
+      (url) => {
+        prepareNavigation(() => { location.href = url; });
+      },
+      [urlB]);
+    await pageB.execute_script(waitForPageShow);
+
+    // Wait for 2 seconds.
+    await new Promise(resolve => t.step_timeout(resolve, 2000));
+
+    // Back navigate to `urlA`.
+    await pageB.execute_script(
+      () => {
+        prepareNavigation(() => { history.back(); });
+      }
+    );
+    await pageA.execute_script(waitForPageShow);
+    await assert_bfcached(pageA);
+
+    // Wait for fetch() completion and check the result.
+    const result = pageA.execute_script(
+        () => window.fetchPromise.then(r => r.text()));
+
+    if (shouldSucceed) {
+      assert_equals(
+        await result,
+        'Body',
+        'Fetch should complete successfully after restored from BFCache');
+    } else {
+      await promise_rejects_js(t, TypeError, result,
+        'Fetch should fail after restored from BFCache');
+    }
+  }, 'Eligibility (in-flight fetch): ' + description);
+}
+
+const url = new URL('../resources/slow.py', location);
+const sameOriginUrl = url.href;
+const crossSiteUrl = originCrossSite + url.pathname;
+
+// Successful fetch completion with different header/body timing.
+runTest(sameOriginUrl + '?delayBeforeBody=2000', false, true,
+  'Header received before BFCache and body received when in BFCache');
+runTest(sameOriginUrl + '?delayBeforeBody=3500', false, true,
+  'Header received before BFCache and body received after BFCache');
+runTest(sameOriginUrl + '?delayBeforeHeader=2000', false, true,
+  'Header and body received when in BFCache');
+runTest(sameOriginUrl + '?delayBeforeHeader=2000&delayBeforeBody=1500',
+  false, true,
+  'Header received when in BFCache and body received after BFCache');
+runTest(sameOriginUrl + '?delayBeforeHeader=3500', false, true,
+  'Header and body received after BFCache');
+
+// CORS and failing fetch.
+runTest(crossSiteUrl + '?delayBeforeHeader=2000&cors=yes', false, true,
+  'CORS succeeded when in BFCache');
+runTest(crossSiteUrl + '?delayBeforeHeader=2000', false, false,
+  'CORS failed when in BFCache');
+
+// Redirects and CSP.
+runTest(
+  '/common/slow-redirect.py?delay=2&location=' +
+  encodeURIComponent(sameOriginUrl),
+  false, true,
+  'Redirect header received when in BFCache');
+runTest(
+  '/common/slow-redirect.py?delay=2&location=' +
+  encodeURIComponent(sameOriginUrl),
+  true, true,
+  'Redirect header received when in BFCache w/ CSP passing');
+runTest(
+  '/common/slow-redirect.py?delay=2&location=' +
+  encodeURIComponent(crossSiteUrl + '?cors=yes'),
+  false, true,
+  'Cross-origin redirect header received when in BFCache');
+runTest(
+  '/common/slow-redirect.py?delay=2&location=' +
+  encodeURIComponent(crossSiteUrl + '?cors=yes'),
+  true, false,
+  'Cross-origin redirect header received when in BFCache w/ CSP failing');
+</script>
