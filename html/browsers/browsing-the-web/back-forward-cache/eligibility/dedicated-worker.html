@@ -1,0 +1,59 @@
+<!doctype html>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/utils.js"></script>
+<script src="/common/dispatcher/dispatcher.js"></script>
+<script src="../resources/helper.sub.js"></script>
+<script>
+// Check whether the page is BFCached when there are dedicated workers.
+
+async function pingWorker(pageA, message) {
+  assert_equals(await pageA.execute_script(
+    (message) => {
+      return new Promise((resolve, reject) => {
+        window.worker.onerror = reject;
+        window.worker.addEventListener(
+            'message', e => resolve(e.data), {once: true});
+        window.worker.postMessage(message);
+      });
+    }, [message]),
+    message,
+    message);
+}
+
+promise_test(async t => {
+  const pageA = new RemoteContext(token());
+  const pageB = new RemoteContext(token());
+
+  const urlA = location.origin + executorPath + pageA.context_id;
+  const urlB = originCrossSite + executorPath + pageB.context_id;
+
+  window.open(urlA, '_blank', 'noopener');
+
+  // Create a dedicated worker, wait for an message sent back from the worker,
+  // and then navigate to `urlB`.
+  await pageA.execute_script(waitForPageShow);
+  await pageA.execute_script(
+    () => window.worker = new Worker('../resources/echo-worker.js'));
+  await pingWorker(pageA, 'Start');
+  await pageA.execute_script(
+    (url) => {
+      prepareNavigation(() => { location.href = url; });
+    },
+    [urlB]);
+
+  // Back navigate and check whether the page is restored from BFCache.
+  await pageB.execute_script(waitForPageShow);
+  await pageB.execute_script(
+    () => {
+      prepareNavigation(() => { history.back(); });
+    }
+  );
+  await pageA.execute_script(waitForPageShow);
+  await assert_bfcached(pageA);
+
+  // Confirm that the worker is still there.
+  await pingWorker(
+      pageA, 'Worker should still work after restored from BFCache');
+}, 'Eligibility: dedicated workers');
+</script>
