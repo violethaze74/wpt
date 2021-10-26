@@ -1,0 +1,25 @@
+<head>
+    <link rel="match" href="canvas-filter-object-blur-expected.html">
+</head>
+<body>
+  <canvas id="canvas" width="300" height="300"></canvas>
+</body>
+<script>
+  var canvas = document.getElementById('canvas');
+  var ctx = canvas.getContext('2d');
+
+  // Because turbulence only works with clip
+  const fillRect = (x, y, w, h) => {
+    ctx.save();
+    ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip(); ctx.fillRect(0,0,1,1);
+    ctx.restore();}
+
+  ctx.filter = new CanvasFilter({filter: "turbulence", baseFrequency: 0.025 });
+  fillRect(10, 10, 100, 100);
+  ctx.filter = new CanvasFilter({filter: "turbulence", baseFrequency: 0.05 });
+  fillRect(120, 10, 100, 100);
+  ctx.filter = new CanvasFilter({filter: "turbulence", baseFrequency: 0.025, seed: 100 });
+  fillRect(10, 120, 100, 100);
+  ctx.filter = new CanvasFilter({filter: "turbulence", baseFrequency: 0.025, numOctaves: 2 });
+  fillRect(120, 120, 100, 100);
+</script>

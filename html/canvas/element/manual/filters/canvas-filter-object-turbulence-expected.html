@@ -1,0 +1,37 @@
+<body>
+  <canvas id="canvas" width="300" height="300"></canvas>
+  <svg style="display:none">>
+    <filter id="base">
+      <feTurbulence baseFrequency="0.025"/>
+    </filter>
+    <filter id="highFrequency">
+      <feTurbulence baseFrequency="0.05"/>
+    </filter>
+    <filter id="seed">
+      <feTurbulence baseFrequency="0.025" seed="100"/>
+    </filter>
+    <filter id="numOctaves">
+      <feTurbulence baseFrequency="0.025" numOctaves="2"/>
+    </filter>
+  </svg>
+</body>
+<script>
+  var canvas = document.getElementById('canvas');
+  var ctx = canvas.getContext('2d');
+
+  // Because turbulence only works with clip
+  const fillRect = (x, y, w, h) => {
+    ctx.save();
+    ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip(); ctx.fillRect(0,0,1,1);
+    ctx.restore();}
+
+  ctx.filter = "url(#base)";
+  fillRect(10, 10, 100, 100);
+  ctx.filter = "url(#highFrequency)";
+  fillRect(120, 10, 100, 100);
+  ctx.filter = "url(#seed)";
+  fillRect(10, 120, 100, 100);
+  ctx.filter = "url(#numOctaves)";
+  fillRect(120, 120, 100, 100);
+</script>
+
