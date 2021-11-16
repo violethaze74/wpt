@@ -1,14 +1,7 @@
 <!doctype html>
 <meta charset="utf-8">
+<script src="./partitioning-utils.js"></script>
 <script>
-function getOrCreateID(key) {
-  if (!localStorage.getItem(key)) {
-    const newID = +new Date() + "-" + Math.random();
-    localStorage.setItem(key, newID);
-  }
-  return localStorage.getItem(key);
-}
-
 window.addEventListener("load", () => {
   // if we have an opener, we know that we are loaded inside a cross-site
   // iframe (because we opened it ourselves).

@@ -1,0 +1,92 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>localStorage: about:blank partitioning</title>
+<meta name=help href="https://privacycg.github.io/storage-partitioning/">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<script src="/webstorage/resources/partitioning-utils.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  localStorage.clear();
+
+  const path =
+    "webstorage/resources/localstorage-about-blank-partitioned-win-open.html";
+  const crossSiteURL = `${get_host_info().HTTP_NOTSAMESITE_ORIGIN}/${path}`;
+  const sameSiteURL = `${get_host_info().HTTP_ORIGIN}/${path}`;
+  let firstPartyID = getOrCreateID("userID4");
+  let crossSiteWinID;
+  let sameSiteWinID;
+  let crossSiteWin;
+  let sameSiteWin;
+  let crossSiteAboutBlankID;
+  let sameSiteAboutBlankID;
+  let closedWindowCount = 0;
+
+  window.addEventListener("message", e => {
+    const payload = {
+      command: "open about:blank window"
+    }
+
+    if (e.data.message === "window loaded") {
+      if (crossSiteURL.includes(e.origin)) {
+        // Step 2. cross-site window is loaded, capture reference to its ID
+        crossSiteWinID = e.data.userID;
+        // Step 3. now, create a same-site window
+        sameSiteWin = window.open(sameSiteURL, "", "noopener=false");
+        // Step 4. Ask the cross-site window to create an about:blank window
+        crossSiteWin.postMessage(payload, e.origin);
+      }
+
+      if (sameSiteURL.includes(e.origin)) {
+        // Step 5. same-site window is loaded, capture reference to its ID
+        sameSiteWinID = e.data.userID;
+        // Step 6. Ask the same-site window to create an about:blank window
+        sameSiteWin.postMessage(payload, e.origin);
+      }
+    }
+
+    if (e.data.message === "about:blank frame ID") {
+      // Step 7. capture reference to same-site window ID
+      if (crossSiteURL.includes(e.origin)) {
+        crossSiteAboutBlankID = e.data.userID;
+      }
+
+      // Step 8. capture reference to same-site window ID
+      if (sameSiteURL.includes(e.origin)) {
+        sameSiteAboutBlankID = e.data.userID;
+
+        // Step 9. Assert some things
+        assert_true(sameSiteAboutBlankID !== undefined,
+          "Received a same-site ID");
+        assert_true(crossSiteAboutBlankID !== undefined,
+          "Received a Cross-site ID");
+        assert_true(sameSiteWinID === sameSiteAboutBlankID,
+          "about:blank window opened from same-site window shares StorageKey");
+        assert_true(crossSiteWinID === crossSiteAboutBlankID,
+          "about:blank window opened from cross-site window shares StorageKey");
+        assert_false(sameSiteAboutBlankID === crossSiteAboutBlankID,
+          "same- and cross-site about:blank windows do not share StorageKey");
+
+        sameSiteWin.postMessage({command: "close about:blank window"}, "*");
+        crossSiteWin.postMessage({command: "close about:blank window"}, "*");
+      }
+    }
+
+    if (e.data.message === "about:blank window closed") {
+      ++closedWindowCount;
+      if (closedWindowCount === 2) {
+        sameSiteWin.close();
+        crossSiteWin.close();
+        localStorage.clear();
+      }
+    }
+  });
+
+  // Step 1. Add a cross-site iframe
+  crossSiteWin = window.open(crossSiteURL, "", "noopener=false");
+}, "about:blank win opened from 3P window.open not partitioned with 1P frame.");
+
+</script>
+</body>

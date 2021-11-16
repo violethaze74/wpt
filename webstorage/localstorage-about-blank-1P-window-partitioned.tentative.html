@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>localStorage: about:blank partitioning</title>
+<meta name=help href="https://privacycg.github.io/storage-partitioning/">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/webstorage/resources/partitioning-utils.js"></script>
+<body>
+<script>
+async_test(t => {
+  window.addEventListener("load", t.step_func_done(e => {
+    localStorage.clear();
+    const id = getOrCreateID("userID");
+
+    t.add_cleanup(() => localStorage.clear());
+
+    window.blankWindow = window.open("about:blank", "", "noopener=false");
+    assert_true(id === blankWindow.localStorage["userID"],
+      "id is not undefined");
+    blankWindow.close();
+  }), {once: true});
+}, "1P about:blank from window.open shares StorageKey with 1P");
+
+</script>
+</body>
