@@ -9,8 +9,16 @@ const kOneDay = 24 * 60 * 60 * 1000;
 const kTenYears = 10 * 365 * kOneDay;
 const kTenYearsFromNow = Date.now() + kTenYears;
 
-const kCookieListItemKeys =
-    ['domain', 'expires', 'name', 'path', 'sameSite', 'secure', 'value'].sort();
+const kCookieListItemKeys = [
+      'domain',
+      'expires',
+      'name',
+      'path',
+      'sameParty',
+      'sameSite',
+      'secure',
+      'value',
+  ].sort();
 
 promise_test(async testCase => {
   await cookieStore.delete('cookie-name');
@@ -28,6 +36,7 @@ promise_test(async testCase => {
   assert_equals(cookie.expires, null);
   assert_equals(cookie.secure, true);
   assert_equals(cookie.sameSite, 'strict');
+  assert_equals(cookie.sameParty, false);
   assert_array_equals(Object.keys(cookie).sort(), kCookieListItemKeys);
 }, 'CookieListItem - cookieStore.set defaults with positional name and value');
 
@@ -46,6 +55,7 @@ promise_test(async testCase => {
   assert_equals(cookie.expires, null);
   assert_equals(cookie.secure, true);
   assert_equals(cookie.sameSite, 'strict');
+  assert_equals(cookie.sameParty, false);
   assert_array_equals(Object.keys(cookie).sort(), kCookieListItemKeys);
 }, 'CookieListItem - cookieStore.set defaults with name and value in options');
 
@@ -65,6 +75,7 @@ promise_test(async testCase => {
   assert_approx_equals(cookie.expires, kTenYearsFromNow, kOneDay);
   assert_equals(cookie.secure, true);
   assert_equals(cookie.sameSite, 'strict');
+  assert_equals(cookie.sameParty, false);
   assert_array_equals(Object.keys(cookie).sort(), kCookieListItemKeys);
 }, 'CookieListItem - cookieStore.set with expires set to a timestamp 10 ' +
    'years in the future');
@@ -84,6 +95,7 @@ promise_test(async testCase => {
   assert_equals(cookie.path, '/');
   assert_approx_equals(cookie.expires, kTenYearsFromNow, kOneDay);
   assert_equals(cookie.secure, true);
+  assert_equals(cookie.sameParty, false);
 }, 'CookieListItem - cookieStore.set with expires set to a Date 10 ' +
    'years in the future');
 
@@ -103,6 +115,7 @@ promise_test(async testCase => {
   assert_equals(cookie.expires, null);
   assert_equals(cookie.secure, true);
   assert_equals(cookie.sameSite, 'strict');
+  assert_equals(cookie.sameParty, false);
   assert_array_equals(Object.keys(cookie).sort(), kCookieListItemKeys);
 }, 'CookieListItem - cookieStore.set with domain set to the current hostname');
 
@@ -126,6 +139,7 @@ promise_test(async testCase => {
   assert_equals(cookie.expires, null);
   assert_equals(cookie.secure, true);
   assert_equals(cookie.sameSite, 'strict');
+  assert_equals(cookie.sameParty, false);
   assert_array_equals(Object.keys(cookie).sort(), kCookieListItemKeys);
 }, 'CookieListItem - cookieStore.set with path set to the current directory');
 
@@ -148,6 +162,7 @@ promise_test(async testCase => {
   assert_equals(cookie.expires, null);
   assert_equals(cookie.secure, true);
   assert_equals(cookie.sameSite, 'strict');
+  assert_equals(cookie.sameParty, false);
   assert_array_equals(Object.keys(cookie).sort(), kCookieListItemKeys);
 }, 'CookieListItem - cookieStore.set adds / to path if it does not end with /');
 
@@ -168,7 +183,31 @@ promise_test(async testCase => {
     assert_equals(cookie.expires, null);
     assert_equals(cookie.secure, true);
     assert_equals(cookie.sameSite, sameSiteValue);
+    assert_equals(cookie.sameParty, false);
     assert_array_equals(Object.keys(cookie).sort(), kCookieListItemKeys);
   }, `CookieListItem - cookieStore.set with sameSite set to ${sameSiteValue}`);
-
 });
+
+promise_test(async testCase => {
+  await cookieStore.delete('cookie-name');
+
+  await cookieStore.set({
+      name: 'cookie-name',
+      value: 'cookie-value',
+      sameParty: true,
+      sameSite: 'lax',
+    });
+  testCase.add_cleanup(async () => {
+    await cookieStore.delete('cookie-name');
+  });
+  const cookie = await cookieStore.get('cookie-name');
+  assert_equals(cookie.name, 'cookie-name');
+  assert_equals(cookie.value, 'cookie-value');
+  assert_equals(cookie.domain, null);
+  assert_equals(cookie.path, '/');
+  assert_equals(cookie.expires, null);
+  assert_equals(cookie.secure, true);
+  assert_equals(cookie.sameSite, 'lax');
+  assert_equals(cookie.sameParty, true);
+  assert_array_equals(Object.keys(cookie).sort(), kCookieListItemKeys);
+}, 'CookieListItem - cookieStore.set with sameParty set to true');
